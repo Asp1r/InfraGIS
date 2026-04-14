@@ -90,7 +90,7 @@ export function MapView({ enabledLayerIds, layerColors }: Props) {
         const sid = sourceId(id);
         if (map.getSource(sid)) continue;
         try {
-          const geo = await apiFetch<object>(`/layers/${id}/geojson`);
+          const geo = await apiFetch<GeoJSON.GeoJSON>(`/layers/${id}/geojson`);
           if (!mapRef.current || mapRef.current !== map) return;
           if (!enabledLayerIds.has(id)) return;
           if (map.getSource(sid)) return;

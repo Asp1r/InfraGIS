@@ -25,8 +25,6 @@ layersource_enum = postgresql.ENUM(
 
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS postgis")
-    userrole_enum.create(op.get_bind(), checkfirst=True)
-    layersource_enum.create(op.get_bind(), checkfirst=True)
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),

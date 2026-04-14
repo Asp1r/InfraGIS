@@ -14,6 +14,7 @@ frontend/dist/
 
 # Uploads & local data
 backend/uploads/
+backend/uploads_test/
 *.log
 
 # IDE
