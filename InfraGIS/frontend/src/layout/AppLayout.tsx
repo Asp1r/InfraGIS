@@ -9,6 +9,8 @@ export function AppLayout() {
         <h1>InfraGIS</h1>
         <nav style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
           <NavLink to="/">Карта</NavLink>
+          {/* Entry point to 360 media workflow */}
+          <NavLink to="/media360">GoPro 360</NavLink>
           {user?.role === "admin" && (
             <>
               <NavLink to="/admin/users">Пользователи</NavLink>

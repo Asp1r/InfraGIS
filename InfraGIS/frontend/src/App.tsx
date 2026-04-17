@@ -5,6 +5,7 @@ import { AdminLayersPage } from "./pages/AdminLayersPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MapPage } from "./pages/MapPage";
+import { Media360Page } from "./pages/Media360Page";
 import { AppLayout } from "./layout/AppLayout";
 
 function Protected({ children }: { children: ReactNode }) {
@@ -29,12 +30,15 @@ export default function App() {
       <Route
         path="/"
         element={
+          // App shell is available only for authenticated users.
           <Protected>
             <AppLayout />
           </Protected>
         }
       >
         <Route index element={<MapPage />} />
+        {/* media360 module is integrated into shell as dedicated route */}
+        <Route path="media360" element={<Media360Page />} />
         <Route
           path="admin/users"
           element={

@@ -15,10 +15,25 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     upload_dir: str = "uploads"
     max_upload_mb: int = 50
+    # media360 stores original uploads and processed derivatives separately.
+    media_upload_dir: str = "media360/uploads"
+    media_processed_dir: str = "media360/processed"
+    # Keep configurable because raw .360 files can be very large.
+    media_max_upload_mb: int = 2048
 
     @property
     def upload_path(self) -> Path:
         return Path(self.upload_dir).resolve()
+
+    @property
+    def media_upload_path(self) -> Path:
+        # Absolute path used by media upload endpoint.
+        return Path(self.media_upload_dir).resolve()
+
+    @property
+    def media_processed_path(self) -> Path:
+        # Absolute path used for transcoded/derived media assets.
+        return Path(self.media_processed_dir).resolve()
 
     @property
     def cors_origins_list(self) -> list[str]:

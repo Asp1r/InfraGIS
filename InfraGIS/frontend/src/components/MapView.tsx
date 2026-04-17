@@ -2,6 +2,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "../api";
+import type { MediaMapPoint } from "../types";
 
 const OSM_STYLE: maplibregl.StyleSpecification = {
   version: 8,
@@ -33,13 +34,23 @@ function lineLayerId(id: number) {
 function fillLayerId(id: number) {
   return `layer-fill-${id}`;
 }
+function mediaSourceId() {
+  // Dedicated map source for 360 media point markers.
+  return "media360-points-src";
+}
+function mediaLayerId() {
+  // Dedicated map layer id for click/hover handlers.
+  return "media360-points-layer";
+}
 
 type Props = {
   enabledLayerIds: Set<number>;
   layerColors: Map<number, string>;
+  layerKinds: Map<number, string>;
+  mediaPoints: MediaMapPoint[];
 };
 
-export function MapView({ enabledLayerIds, layerColors }: Props) {
+export function MapView({ enabledLayerIds, layerColors, layerKinds, mediaPoints }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const [mapReady, setMapReady] = useState(false);
@@ -86,6 +97,7 @@ export function MapView({ enabledLayerIds, layerColors }: Props) {
     }
 
     const run = async () => {
+      // Lazily fetch and attach selected GIS layers as GeoJSON sources.
       for (const id of enabledLayerIds) {
         const sid = sourceId(id);
         if (map.getSource(sid)) continue;
@@ -103,7 +115,7 @@ export function MapView({ enabledLayerIds, layerColors }: Props) {
             filter: ["==", ["geometry-type"], "Polygon"],
             paint: {
               "fill-color": color,
-              "fill-opacity": 0.25,
+              "fill-opacity": layerKinds.get(id) === "road_axis" ? 0.05 : 0.25,
             },
           });
           map.addLayer({
@@ -111,8 +123,8 @@ export function MapView({ enabledLayerIds, layerColors }: Props) {
             type: "line",
             source: sid,
             paint: {
-              "line-color": color,
-              "line-width": 2,
+              "line-color": layerKinds.get(id) === "road_axis" ? "#ef4444" : color,
+              "line-width": layerKinds.get(id) === "road_axis" ? 4 : 2,
             },
           });
         } catch {
@@ -121,7 +133,81 @@ export function MapView({ enabledLayerIds, layerColors }: Props) {
       }
     };
     void run();
-  }, [mapReady, enabledLayerIds, layerColors]);
+  }, [mapReady, enabledLayerIds, layerColors, layerKinds]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
+    const srcId = mediaSourceId();
+    const lyrId = mediaLayerId();
+    // Rebuild marker source whenever media points change.
+    const data: GeoJSON.FeatureCollection<GeoJSON.Point> = {
+      type: "FeatureCollection",
+      features: mediaPoints.map((point) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [point.lon, point.lat] },
+        properties: {
+          media_id: point.media_id,
+          original_filename: point.original_filename,
+          axis_km: point.axis_km,
+        },
+      })),
+    };
+
+    if (!map.getSource(srcId)) {
+      map.addSource(srcId, { type: "geojson", data });
+    } else {
+      (map.getSource(srcId) as maplibregl.GeoJSONSource).setData(data);
+    }
+
+    if (!map.getLayer(lyrId)) {
+      map.addLayer({
+        id: lyrId,
+        type: "circle",
+        source: srcId,
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#f97316",
+          "circle-stroke-width": 1,
+          "circle-stroke-color": "#ffffff",
+        },
+      });
+    }
+
+    const onClick = (event: maplibregl.MapLayerMouseEvent) => {
+      const feature = event.features?.[0];
+      if (!feature) return;
+      const mediaId = feature.properties?.media_id;
+      const filename = feature.properties?.original_filename;
+      const axisKm = feature.properties?.axis_km;
+      if (typeof mediaId !== "number" && typeof mediaId !== "string") return;
+      const id = String(mediaId);
+      const label = typeof filename === "string" ? filename : `media-${id}`;
+      // Deep-link into media module focused on clicked record.
+      const kmText = typeof axisKm === "number" ? `<br/><strong>Км:</strong> ${axisKm.toFixed(3)}` : "";
+      new maplibregl.Popup()
+        .setLngLat(event.lngLat)
+        .setHTML(
+          `<strong>360:</strong> ${label}${kmText}<br/><a href="/media360?mediaId=${id}">Открыть модуль</a>`,
+        )
+        .addTo(map);
+    };
+
+    map.on("click", lyrId, onClick);
+    map.on("mouseenter", lyrId, () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", lyrId, () => {
+      map.getCanvas().style.cursor = "";
+    });
+
+    return () => {
+      map.off("click", lyrId, onClick);
+      if (map.getLayer(lyrId)) map.removeLayer(lyrId);
+      if (map.getSource(srcId)) map.removeSource(srcId);
+    };
+  }, [mapReady, mediaPoints]);
 
   return (
     <div

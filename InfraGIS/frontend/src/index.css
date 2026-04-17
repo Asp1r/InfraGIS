@@ -138,3 +138,15 @@ table.data th {
   color: var(--muted);
   font-weight: 500;
 }
+
+.media360-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+@media (max-width: 1200px) {
+  .media360-grid {
+    grid-template-columns: 1fr;
+  }
+}

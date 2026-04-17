@@ -48,3 +48,14 @@ export async function apiUpload(path: string, form: FormData): Promise<unknown> 
   }
   return res.json();
 }
+
+export function apiUrl(path: string): string {
+  return `${base}${path}`;
+}
+
+export async function createRoad(name: string, description?: string): Promise<unknown> {
+  return apiFetch("/layers/roads", {
+    method: "POST",
+    body: JSON.stringify({ name, description: description || null }),
+  });
+}

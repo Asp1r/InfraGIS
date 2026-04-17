@@ -26,13 +26,21 @@
 - `app/models.py`  
   ORM-модели:
   - `User` — логин, хэш пароля, роль, активность, дата создания.
-  - `Layer` — метаданные слоя, тип источника (файл/URL), ссылка на создателя.  
+  - `Layer` — метаданные слоя, тип источника (файл/URL), тип дорожного слоя, parent-child структура, ссылка на создателя.  
+  - `IriMeasurement` — записи продольной ровности с линейной привязкой (`km_start`/`km_end`).
+  - `DefectRecord` — записи дефектов с линейной привязкой и нормативной ссылкой.
+  - `MediaGeoLink` — геопривязка 360-медиа, включая `axis_layer_id` и расчетный `axis_km`.
   Enum-типы:
   - `UserRole`: `admin`, `viewer`
   - `LayerSourceType`: `uploaded_geojson`, `url_geojson`
+  - `LayerKind`: `road`, `road_axis`, `iri`, `defects`
 
 - `app/schemas.py`  
-  Pydantic-схемы для валидации входа/выхода API (`LoginRequest`, `Token`, `UserCreate`, `LayerOut` и т.д.).
+  Pydantic-схемы для валидации входа/выхода API (`LoginRequest`, `Token`, `UserCreate`, `LayerOut` и т.д.), включая:
+  - дерево слоёв (`LayerTreeNode`),
+  - upload оси с chainage (`AxisUploadOut`),
+  - схемы IRI/дефектов.
+  - схемы media-линейной привязки (`axis_layer_id`, `axis_km`) и ответ bulk-пересчета.
 
 ### 2.2 Безопасность и авторизация
 
@@ -61,13 +69,43 @@
 - `app/routers/layers.py`  
   Основная логика слоев:
   - `GET /layers` — список слоев.
+  - `GET /layers/tree` — дерево слоев (иерархия по `parent_id`).
+  - `POST /layers/roads` — создание корневого слоя `Дорога`.
   - `POST /layers` — создание слоя (файл GeoJSON или URL).
+  - `POST /layers/{road_id}/axis` — загрузка оси дороги (GeoJSON/CSV/ZIP Shapefile) в выбранную дорогу.
   - `POST /layers/from-url` — JSON-версия создания слоя из URL.
+  - `POST /layers/iri-records` / `GET /layers/iri-records/{layer_id}` — работа с IRI.
+  - `POST /layers/defect-records` / `GET /layers/defect-records/{layer_id}` — работа с дефектами.
   - `PATCH /layers/{id}` — изменить имя/описание слоя.
   - `DELETE /layers/{id}` — удалить слой и локальный файл, если был upload.
   - `GET /layers/{id}/geojson` — вернуть GeoJSON из файла или проксировать с URL.
   
   Важный момент: перед сохранением проверяется базовая валидность GeoJSON (`_validate_geojson`).
+  Для оси добавлена нормализация входного формата и расчет километража.
+
+- `app/services/import_axis.py`  
+  Сервис импорта оси дороги:
+  - парсинг GeoJSON,
+  - парсинг CSV с lon/lat,
+  - парсинг ZIP Shapefile (`.shp/.shx/.dbf`),
+  - нормализация геометрии к `LineString`/`MultiLineString`.
+
+- `app/services/chainage.py`  
+  Сервис линейной привязки:
+  - расчет длины по сегментам (Haversine),
+  - расчет накопленного километража по вершинам оси,
+  - выдача `total_km` и `points[]`.
+
+- `app/services/linear_reference.py`
+  Сервис привязки произвольной точки к оси дороги:
+  - проектирование точки на ближайший сегмент оси,
+  - вычисление chainage в км (`axis_km`) от начала оси.
+
+- `app/routers/media360.py`
+  Расширен для дорожной линейной привязки:
+  - `POST /media360/items/{media_id}/geolink` теперь поддерживает `axis_layer_id` и сохраняет `axis_km`,
+  - `GET /media360/map-points` возвращает `axis_km` и поддерживает фильтр `axis_layer_id`,
+  - `POST /media360/axis/{axis_layer_id}/recalculate-km` выполняет массовый пересчет километража для существующих geolink.
 
 - `app/main.py`  
   Точка входа FastAPI:
@@ -89,6 +127,19 @@
   
   Исправление после реального деплоя: убрано двойное создание enum-типа в `upgrade()`.
 
+- `alembic/versions/002_road_model.py`  
+  Миграция дорожной модели:
+  - добавляет `layerkind`,
+  - добавляет `layers.parent_id` и `layers.axis_layer_id`,
+  - создает таблицы `iri_measurements` и `defect_records`,
+  - индексы/внешние ключи для быстрых выборок и ссылочной целостности.
+
+- `alembic/versions/005_media_geolink_axis_chainage.py`
+  Миграция для связки 360 и дорожной оси:
+  - добавляет `media_geo_links.axis_layer_id`,
+  - добавляет `media_geo_links.axis_km`,
+  - добавляет индекс и внешний ключ на ось.
+
 ### 2.5 Тесты
 
 - `tests/conftest.py`  
@@ -96,7 +147,17 @@
 - `tests/test_auth.py`  
   Проверяет login/me и ограничения ролей.
 - `tests/test_layers.py`  
-  Проверяет авторизацию слоя, upload GeoJSON и чтение слоя.
+  Проверяет авторизацию слоя, upload GeoJSON и чтение слоя, а также:
+  - создание дерева дорог,
+  - загрузку оси в форматах GeoJSON/CSV/ZIP Shapefile,
+  - создание записей IRI/дефектов.
+- `tests/test_chainage.py`
+  Проверяет корректность расчета километража для `LineString` и `MultiLineString`.
+- `tests/test_media360.py`
+  Дополнительно покрывает:
+  - расчет `axis_km` при создании geolink,
+  - массовый пересчет `axis_km`,
+  - проверку прав доступа к bulk endpoint (только admin).
 
 ## 3) Frontend (`frontend/`)
 
@@ -137,9 +198,14 @@
   - `apiFetch` для JSON-запросов,
   - `apiUpload` для multipart upload.  
   Автоматически добавляет `Authorization: Bearer ...`, если токен есть в `localStorage`.
+  Дополнительно поддержаны вызовы API дорожного дерева и оси.
 
 - `src/types.ts`  
-  Общие типы `User`, `Layer`, `UserRole`.
+  Общие типы `User`, `Layer`, `UserRole`, а также:
+  - `LayerKind`,
+  - `LayerTreeNode`,
+  - `AxisUploadResult`,
+  - типы записей IRI/дефектов.
 
 ### 3.4 UI-страницы
 
@@ -147,7 +213,7 @@
   Форма входа, сохраняет JWT через `setToken`.
 
 - `src/pages/MapPage.tsx`  
-  Загружает список слоев, хранит состояние включенных слоев, передает его в `MapView`.
+  Загружает дерево слоев (`/layers/tree`), хранит состояние включенных слоев, группирует отображение по дорогам и передает данные в `MapView`.
 
 - `src/components/MapView.tsx`  
   Карта MapLibre:
@@ -156,13 +222,20 @@
   - удаляет отключенные слои,
   - загружает GeoJSON через backend endpoint `/layers/{id}/geojson`.
   
-  Исправление после real-world сборки: `apiFetch<GeoJSON.GeoJSON>` вместо `apiFetch<object>`.
+  Дополнительно:
+  - отдельная стилизация оси дороги (`road_axis`) с визуальным приоритетом,
+  - сохранена интеграция с модулем точек 360,
+  - popup 360-точек показывает километраж (`axis_km`), если он рассчитан.
 
 - `src/pages/AdminUsersPage.tsx`  
   Список пользователей и форма создания нового пользователя.
 
 - `src/pages/AdminLayersPage.tsx`  
-  Список слоев, форма загрузки файла или URL, удаление слоя.
+  Страница управления дорожными слоями:
+  - создание слоя `Дорога`,
+  - загрузка оси в выбранную дорогу (GeoJSON/CSV/ZIP),
+  - автосоздание дочерних тематических слоев `IRI` и `Дефекты`,
+  - удаление слоев.
 
 - `src/layout/AppLayout.tsx`  
   Общая навигация + кнопка logout.
@@ -175,10 +248,15 @@
 1. Пользователь логинится на `/login`.
 2. Backend возвращает JWT.
 3. Frontend хранит токен и вызывает `/auth/me`.
-4. На карте вызывается `/layers`, пользователь видит список слоев.
-5. При включении слоя фронтенд запрашивает `/layers/{id}/geojson`.
-6. `MapView` добавляет source/layers в MapLibre.
-7. Если пользователь admin — доступны страницы управления пользователями и слоями.
+4. На карте вызывается `/layers/tree`, пользователь видит дороги и вложенные тематические слои.
+5. Администратор создает `Дорогу` и загружает `Ось дороги` через `/layers/{road_id}/axis`.
+6. Backend нормализует ось и считает километраж (`total_km`, `points[]`).
+7. IRI и дефекты сохраняются как линейно-привязанные записи к этой оси.
+8. При включении слоя фронтенд запрашивает `/layers/{id}/geojson`.
+9. `MapView` добавляет source/layers в MapLibre.
+10. При создании geolink 360 backend вычисляет `axis_km` по оси (если axis задан/разрешен из контекста слоя).
+11. При необходимости admin массово пересчитывает `axis_km` через `/media360/axis/{axis_layer_id}/recalculate-km`.
+12. Если пользователь admin — доступны страницы управления пользователями и слоями.
 
 ## 5) Что важно помнить при дальнейшей разработке
 
