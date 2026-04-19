@@ -17,20 +17,21 @@ MVP включает:
 - `backend/` — FastAPI API, Alembic миграции, тесты.
 - `frontend/` — React + TypeScript + Vite + MapLibre.
 - `docker-compose.yml` — PostgreSQL/PostGIS.
+- `docker-compose.prod.yml` — production-стек (PostGIS + backend + frontend).
 
 ## Быстрый старт
 
 ### 1) База данных (PostGIS)
 
 ```powershell
-cd c:\Users\asp1r\InfraGIS
+cd c:\Users\asp1r\InfraGIS_clean
 docker compose up -d
 ```
 
 ### 2) Backend
 
 ```powershell
-cd c:\Users\asp1r\InfraGIS\backend
+cd c:\Users\asp1r\InfraGIS_clean\backend
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 py -m pip install -r requirements.txt
@@ -48,7 +49,7 @@ py -m uvicorn app.main:app --reload --port 8000
 ### 3) Frontend
 
 ```powershell
-cd c:\Users\asp1r\InfraGIS\frontend
+cd c:\Users\asp1r\InfraGIS_clean\frontend
 npm install
 npm run dev
 ```
@@ -133,7 +134,7 @@ npm run dev
 ## Тесты
 
 ```powershell
-cd c:\Users\asp1r\InfraGIS\backend
+cd c:\Users\asp1r\InfraGIS_clean\backend
 py -m pytest tests -q
 ```
 
@@ -147,3 +148,28 @@ py -m pytest tests -q
 - сохранение записей IRI и дефектов,
 - связку 360-точки с осью и расчет `axis_km`,
 - массовый пересчет `axis_km` по оси.
+
+## Production деплой (Docker)
+
+1) Подготовить переменные окружения:
+
+```bash
+cp .env.example .env
+```
+
+2) Запустить стек:
+
+```bash
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+3) Проверить состояние:
+
+```bash
+curl http://127.0.0.1/health
+docker compose -f docker-compose.prod.yml ps
+```
+
+Для удобства добавлены скрипты:
+- Linux/macOS: `./deploy.sh`
+- Windows PowerShell: `./deploy.ps1`

@@ -109,15 +109,21 @@ class Layer(Base):
     axis_layer: Mapped["Layer | None"] = relationship("Layer", foreign_keys=[axis_layer_id], remote_side=[id])
     iri_measurements: Mapped[list["IriMeasurement"]] = relationship(
         "IriMeasurement",
+        foreign_keys="IriMeasurement.layer_id",
         back_populates="layer",
         cascade="all, delete-orphan",
     )
     defect_records: Mapped[list["DefectRecord"]] = relationship(
         "DefectRecord",
+        foreign_keys="DefectRecord.layer_id",
         back_populates="layer",
         cascade="all, delete-orphan",
     )
-    media_links: Mapped[list["MediaGeoLink"]] = relationship("MediaGeoLink", back_populates="layer")
+    media_links: Mapped[list["MediaGeoLink"]] = relationship(
+        "MediaGeoLink",
+        foreign_keys="MediaGeoLink.layer_id",
+        back_populates="layer",
+    )
 
 
 class IriMeasurement(Base):
@@ -238,7 +244,11 @@ class MediaGeoLink(Base):
 
     # Geospatial links connect media to optional layer/feature context on map.
     media: Mapped["MediaRecord"] = relationship("MediaRecord", back_populates="geo_links")
-    layer: Mapped["Layer | None"] = relationship("Layer", back_populates="media_links")
+    layer: Mapped["Layer | None"] = relationship(
+        "Layer",
+        foreign_keys=[layer_id],
+        back_populates="media_links",
+    )
     # Separate relation to the axis layer allows direct filtering and bulk recalculation.
     axis_layer: Mapped["Layer | None"] = relationship("Layer", foreign_keys=[axis_layer_id])
 

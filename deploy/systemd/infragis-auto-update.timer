@@ -1,0 +1,11 @@
+[Unit]
+Description=Run InfraGIS auto-update every 15 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Unit=infragis-auto-update.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
